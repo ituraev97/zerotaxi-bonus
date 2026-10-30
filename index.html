@@ -239,7 +239,7 @@ let lang = "ru", data = null, tab = "home", busy = false;
 
 function t(key, kw) {
   let s = (T[lang] && T[lang][key]) || T.ru[key] || key;
-  if (kw) for (const k in kw) s = s.split("{" + k + "}").join(kw[k]);
+  if (kw) for (const k in kw) s = s.split("{" + k + "}").join(kw[k] == null ? "" : String(kw[k]));   // пусто, а не "undefined"
   return s;
 }
 function fmt(n) { return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
@@ -250,7 +250,10 @@ function h(tag, attrs, ...kids) {
   const [name, ...cls] = tag.split(".");
   const el = document.createElement(name || "div");
   if (cls.length) el.className = cls.join(" ");
-  if (attrs && (typeof attrs !== "object" || attrs instanceof Node || Array.isArray(attrs))) { kids.unshift(attrs); attrs = null; }
+  // Атрибуты — только обычный объект {…}; всё остальное (текст, число, 0, элемент, список) — содержимое.
+  if (attrs !== undefined && (attrs === null || typeof attrs !== "object" || attrs instanceof Node || Array.isArray(attrs))) {
+    kids.unshift(attrs); attrs = null;
+  }
   for (const k in attrs || {}) {
     if (k.startsWith("on")) el.addEventListener(k.slice(2), attrs[k]);
     else if (k === "style") el.style.cssText = attrs[k];
@@ -269,6 +272,12 @@ async function call(a, extra) {
 }
 
 function errText(code) { return T.ru["e_" + code] ? t("e_" + code) : t("e_server"); }
+
+/** Ответ с ошибкой: если профиль успели отвязать — назад на экран привязки. → true, если обработано */
+function lostProfile(r) {
+  if (r && r.error === "not_registered") { start(); return true; }
+  return false;
+}
 function alertMsg(text) { return new Promise(r => tg.showAlert ? tg.showAlert(text, r) : (alert(text), r())); }
 function confirmMsg(text) { return new Promise(r => tg.showConfirm ? tg.showConfirm(text, r) : r(confirm(text))); }
 function haptic(kind) { try { tg.HapticFeedback.notificationOccurred(kind); } catch (e) {} }
@@ -285,7 +294,7 @@ function loading() { screen(h("div.spin")); }
 function fatal(code) {
   tabsEl.hidden = true;
   screen(h("div.hero", h("div.e", "⚠️"), h("p", errText(code))),
-         code === "auth" ? null : h("button", { onclick: start }, t("retry")));
+         code === "auth" || code === "auth_expired" ? null : h("button", { onclick: start }, t("retry")));
 }
 
 // Прошлые данные из памяти телефона: показываем сразу, свежие подгружаем в фоне.
@@ -413,6 +422,7 @@ async function activatePromo(P) {
   loading();
   const r = await call("promo");
   busy = false;
+  if (!r.ok && lostProfile(r)) return;
   if (!r.ok) { haptic("error"); await alertMsg(errText(r.error)); return render(); }
   haptic("success");
   apply(r);
@@ -424,6 +434,7 @@ async function switchReq() {
   busy = true;
   const r = await call("switch");
   busy = false;
+  if (!r.ok && lostProfile(r)) return;
   if (!r.ok) return alertMsg(errText(r.error));
   haptic("success");
   alertMsg(t("switch_sent"));
@@ -467,6 +478,7 @@ async function redeem(p) {
   loading();
   const r = await call("redeem", { reward_id: p.id, start });
   busy = false;
+  if (!r.ok && lostProfile(r)) return;
   if (!r.ok) { haptic("error"); await alertMsg(errText(r.error)); }
   else {
     haptic("success");
@@ -551,6 +563,7 @@ async function setPref(p) {
   loading();
   const r = await call("set", p);
   busy = false;
+  if (!r.ok && lostProfile(r)) return;
   if (!r.ok) { await alertMsg(errText(r.error)); return render(); }
   apply(r);
 }
@@ -561,6 +574,7 @@ async function sendSupport(ta) {
   busy = true;
   const r = await call("support", { text });
   busy = false;
+  if (!r.ok && lostProfile(r)) return;
   if (!r.ok) return alertMsg(errText(r.error));
   ta.value = "";
   haptic("success");
@@ -572,6 +586,7 @@ async function deleteMe() {
   busy = true;
   const r = await call("delete");
   busy = false;
+  if (!r.ok && lostProfile(r)) return;
   if (!r.ok) return alertMsg(errText(r.error));
   await alertMsg(t("deleted"));
   tg.close();
