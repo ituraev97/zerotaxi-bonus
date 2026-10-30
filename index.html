@@ -340,6 +340,12 @@ function renderRegister(msg) {
 function register() {
   if (busy) return;
   if (!tg.requestContact || !tg.isVersionAtLeast("6.9")) return renderRegister(t("old_tg"));
+  // Разрешение боту писать водителю: нужно, если он пришёл по ссылке и ни разу не нажимал Start
+  // (иначе не придут закреплённая кнопка «Бонусы» и утренние сообщения). Отказ не мешает привязке.
+  if (tg.requestWriteAccess) tg.requestWriteAccess(() => askContact()); else askContact();
+}
+
+function askContact() {
   tg.requestContact(async (shared, resp) => {
     if (!shared || !resp || !resp.response) return renderRegister(t("reg_cancel"));
     busy = true;
