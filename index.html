@@ -276,7 +276,10 @@ function haptic(kind) { try { tg.HapticFeedback.notificationOccurred(kind); } ca
 const app = document.getElementById("app");
 const tabsEl = document.getElementById("tabs");
 
-function screen(...kids) { app.replaceChildren(...kids); window.scrollTo(0, 0); }
+function screen(...kids) {
+  app.replaceChildren(...kids.flat().filter(k => k != null && k !== false));   // пустые блоки не выводим
+  window.scrollTo(0, 0);
+}
 function loading() { screen(h("div.spin")); }
 
 function fatal(code) {
