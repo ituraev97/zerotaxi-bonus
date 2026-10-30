@@ -144,6 +144,17 @@ const T = {
     e_auth_expired: "Сессия устарела. Закройте и откройте «Бонусы» заново.",
     e_auth: "Откройте «Бонусы» из Telegram.", e_net: "Нет связи. Проверьте интернет и попробуйте ещё раз.",
     e_server: "Что-то пошло не так. Попробуйте ещё раз чуть позже.",
+    r_tenure: "стаж",
+    promo_offer: "🚖 Возвращайтесь! {days} дн. работы без комиссии парка (0%). Активируйте, когда будете готовы выйти на линию — предложение действует до {until}.",
+    promo_btn: "Активировать {days} дн. без комиссии",
+    promo_confirm: "Активировать {days} дн. без комиссии? Начнутся сегодня (если активировать после 18:00 — завтра).",
+    promo_active: "✅ Без комиссии парка с {start} по {end}. Оператор включит 0% в Диспетчерской. Если заказы всё ещё идут с комиссией — напишите в поддержку.",
+    promo_done: "✅ Активировано! Оператор включит 0% в ближайшее время.",
+    e_promo_unavailable: "Предложение уже неактивно.",
+    tenure: "Стаж в парке", tenure_months: "{n} мес.",
+    tenure_rule: "Месяц засчитывается, если в нём {min} и больше рабочих дней.",
+    tenure_cur: "В этом месяце: {d} из {min} дней",
+    tenure_next: "На {m} мес. стажа: +{pts} баллов",
     retry: "Повторить", only_tg: "Откройте эту страницу через кнопку «Бонусы» в боте @zerotaxi_bot.",
   },
   uz: {
@@ -196,6 +207,17 @@ const T = {
     e_auth_expired: "Sessiya eskirdi. «Bonuslar»ni yopib, qayta oching.",
     e_auth: "«Bonuslar»ni Telegram orqali oching.", e_net: "Aloqa yo'q. Internetni tekshirib, qayta urinib ko'ring.",
     e_server: "Xatolik yuz berdi. Birozdan keyin qayta urinib ko'ring.",
+    r_tenure: "staj",
+    promo_offer: "🚖 Qayting! {days} kun park komissiyasisiz (0%) ishlash. Liniyaga chiqishga tayyor bo'lganingizda faollashtiring — taklif {until} gacha amal qiladi.",
+    promo_btn: "{days} kun komissiyasiz — faollashtirish",
+    promo_confirm: "{days} kun komissiyasiz ishlash faollashtirilsinmi? Bugundan boshlanadi (18:00 dan keyin bo'lsa — ertadan).",
+    promo_active: "✅ {start} dan {end} gacha park komissiyasisiz. Operator Dispetcherlikda 0% ni yoqadi. Agar buyurtmalar hali komissiya bilan kelayotgan bo'lsa — qo'llab-quvvatlashga yozing.",
+    promo_done: "✅ Faollashtirildi! Operator tez orada 0% ni yoqadi.",
+    e_promo_unavailable: "Taklif endi faol emas.",
+    tenure: "Parkdagi staj", tenure_months: "{n} oy",
+    tenure_rule: "Oy {min} va undan ortiq ish kuni bo'lsa hisoblanadi.",
+    tenure_cur: "Shu oyda: {min} kundan {d} kun",
+    tenure_next: "{m} oylik staj uchun: +{pts} ball",
     retry: "Qayta urinish", only_tg: "Bu sahifani @zerotaxi_bot dagi «Bonuslar» tugmasi orqali oching.",
   },
 };
@@ -319,11 +341,29 @@ function viewHome() {
     h("div.muted", t("orders_in", { d: L.days, n: L.orders })),
     h("div.muted", L.next_name ? t("to_next", { next: L.next_name, need: L.need }) : t("max_level")));
   const rateText = t("rate_" + R.kind, R);
-  const out = [
+  const out = [];
+  const P = data.promo;
+  if (P && P.status === "offer") {
+    out.push(h("div.card", { style: "border:2px solid var(--accent)" },
+      h("div", { style: "margin-bottom:10px" }, t("promo_offer", P)),
+      h("button", { onclick: () => activatePromo(P) }, t("promo_btn", P))));
+  } else if (P && P.status === "active") {
+    out.push(h("div.card", { style: "border:2px solid var(--ok)" }, t("promo_active", P)));
+  }
+  out.push(
     h("div.card.balance", h("div.num", fmt(data.balance)), h("div.lbl", t("balance"))),
-    levelCard,
-    h("div.note" + (R.kind === "low" ? ".warn" : ""), rateText),
-  ];
+    levelCard);
+  const TN = data.tenure;
+  if (TN) {
+    out.push(h("div.card",
+      h("div.row", h("span.muted", t("tenure")), h("b", t("tenure_months", { n: TN.months }))),
+      h("div.bar", h("i", { style: "width:" + Math.min(100, Math.round(TN.cur_days / TN.min_days * 100)) + "%" })),
+      h("div.muted", t("tenure_cur", { d: TN.cur_days, min: TN.min_days })),
+      TN.next_m ? h("div.muted", t("tenure_next", { m: TN.next_m, pts: fmt(TN.next_pts) })) : null,
+      h("div.muted", { style: "font-size:12px;margin-top:4px" }, t("tenure_rule", { min: TN.min_days }))));
+  }
+  out.push(
+    h("div.note" + (R.kind === "low" ? ".warn" : ""), rateText));
   if (data.low_offer) {
     out.push(h("div.note.warn", data.low_offer));
     out.push(h("div", { style: "margin-top:10px" }, h("button", { onclick: switchReq }, t("want_switch", { p: R.min_pct }))));
@@ -336,6 +376,18 @@ function viewHome() {
         h("span." + (x.pts >= 0 ? "plus" : "minus"), (x.pts > 0 ? "+" : "") + fmt(x.pts)))))
     : h("div.muted", t("history_empty"))));
   return out;
+}
+
+async function activatePromo(P) {
+  if (busy || !(await confirmMsg(t("promo_confirm", P)))) return;
+  busy = true;
+  loading();
+  const r = await call("promo");
+  busy = false;
+  if (!r.ok) { haptic("error"); await alertMsg(errText(r.error)); return render(); }
+  haptic("success");
+  apply(r);
+  alertMsg(t("promo_done"));
 }
 
 async function switchReq() {
