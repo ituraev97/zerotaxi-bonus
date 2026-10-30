@@ -273,16 +273,24 @@ function fatal(code) {
          code === "auth" ? null : h("button", { onclick: start }, t("retry")));
 }
 
+// Прошлые данные из памяти телефона: показываем сразу, свежие подгружаем в фоне.
+function cacheKey() { try { return "zb:" + tg.initDataUnsafe.user.id; } catch (e) { return "zb"; } }
+function cacheGet() { try { return JSON.parse(localStorage.getItem(cacheKey()) || "null"); } catch (e) { return null; } }
+function cacheSet(r) { try { localStorage.setItem(cacheKey(), JSON.stringify(r)); } catch (e) {} }
+
 async function start() {
   if (!tg || !tg.initData) { screen(h("div.hero", h("div.e", "🎁"), h("p", T.ru.only_tg), h("p", T.uz.only_tg))); return; }
-  loading();
+  const cached = cacheGet();
+  if (cached && cached.registered) apply(cached); else loading();
   const r = await call("load");
-  if (!r.ok) return fatal(r.error);
+  if (!r.ok) { if (!cached || !cached.registered) fatal(r.error); return; }
+  if (busy) return;                       // пока грузилось, водитель уже что-то нажал
   apply(r);
 }
 
 function apply(r) {
   data = r;
+  if (r.ok) cacheSet(r);
   if (!r.registered) { lang = r.lang || lang; return renderRegister(); }
   lang = r.me.lang;
   document.documentElement.lang = lang;
