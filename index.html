@@ -145,6 +145,12 @@ const T = {
     e_auth: "Откройте «Бонусы» из Telegram.", e_net: "Нет связи. Проверьте интернет и попробуйте ещё раз.",
     e_server: "Что-то пошло не так. Попробуйте ещё раз чуть позже.",
     r_tenure: "стаж",
+    commission: "скидка на комиссию", c_days: "{n} дн.", c_pct: "комиссия {p}%",
+    when: "С какого дня включить?", when_today: "Сегодня", when_tomorrow: "Завтра", cancel: "Отмена",
+    redeem_promo_ok: "✅ Готово! Комиссия {pct}% с {start} по {end}. Оператор включит её в Диспетчерской.",
+    active_title: "Действует сейчас", active_row: "{title}: с {start} по {end}",
+    e_promo_busy: "У вас уже есть действующая скидка на комиссию. Новую можно взять после её окончания.",
+    e_bad_start: "После 18:00 скидку можно включить только с завтрашнего дня.",
     promo_offer: "🚖 Возвращайтесь! {days} дн. работы без комиссии парка (0%). Активируйте, когда будете готовы выйти на линию — предложение действует до {until}.",
     promo_btn: "Активировать {days} дн. без комиссии",
     promo_confirm: "Активировать {days} дн. без комиссии? Начнутся сегодня (если активировать после 18:00 — завтра).",
@@ -208,6 +214,12 @@ const T = {
     e_auth: "«Bonuslar»ni Telegram orqali oching.", e_net: "Aloqa yo'q. Internetni tekshirib, qayta urinib ko'ring.",
     e_server: "Xatolik yuz berdi. Birozdan keyin qayta urinib ko'ring.",
     r_tenure: "staj",
+    commission: "komissiya chegirmasi", c_days: "{n} kun", c_pct: "komissiya {p}%",
+    when: "Qaysi kundan yoqilsin?", when_today: "Bugun", when_tomorrow: "Ertaga", cancel: "Bekor qilish",
+    redeem_promo_ok: "✅ Tayyor! {start} dan {end} gacha komissiya {pct}%. Operator uni Dispetcherlikda yoqadi.",
+    active_title: "Hozir amal qilmoqda", active_row: "{title}: {start} dan {end} gacha",
+    e_promo_busy: "Sizda amaldagi komissiya chegirmasi bor. Yangisini u tugagandan keyin olish mumkin.",
+    e_bad_start: "18:00 dan keyin chegirmani faqat ertadan yoqish mumkin.",
     promo_offer: "🚖 Qayting! {days} kun park komissiyasisiz (0%) ishlash. Liniyaga chiqishga tayyor bo'lganingizda faollashtiring — taklif {until} gacha amal qiladi.",
     promo_btn: "{days} kun komissiyasiz — faollashtirish",
     promo_confirm: "{days} kun komissiyasiz ishlash faollashtirilsinmi? Bugundan boshlanadi (18:00 dan keyin bo'lsa — ertadan).",
@@ -358,6 +370,12 @@ function viewHome() {
   } else if (P && P.status === "active") {
     out.push(h("div.card", { style: "border:2px solid var(--ok)" }, t("promo_active", P)));
   }
+  const AP = data.active_promos || [];
+  if (AP.length) {
+    out.push(h("div.card", { style: "border:2px solid var(--ok)" },
+      h("b", "🏷 " + t("active_title")),
+      AP.map(x => h("div", { style: "margin-top:6px" }, t("active_row", x)))));
+  }
   out.push(
     h("div.card.balance", h("div.num", fmt(data.balance)), h("div.lbl", t("balance"))),
     levelCard);
@@ -415,9 +433,11 @@ function viewShop() {
   for (const p of data.shop) {
     const can = data.balance >= p.price;
     out.push(h("div.card.prize",
-      h("div.ic", p.type === "money" ? "💵" : "📦"),
+      h("div.ic", p.type === "money" ? "💵" : p.type === "commission" ? "🏷" : "📦"),
       h("div.body", h("div.title", p.title),
-        h("div.muted", fmt(p.price) + " " + t("pts") + " · " + t(p.type === "money" ? "money" : "merch") +
+        h("div.muted", fmt(p.price) + " " + t("pts") + " · " +
+          (p.type === "commission" ? t("c_days", { n: p.days || 1 }) + ", " + t("c_pct", { p: String(p.pct || 0).replace(".", ",") })
+            : t(p.type === "money" ? "money" : "merch")) +
           (p.left != null ? " · " + t("left", { n: p.left }) : ""))),
       can ? h("button", { onclick: () => redeem(p) }, t("get"))
           : h("span.muted", t("need_more", { n: fmt(p.price - data.balance) }))));
@@ -426,15 +446,29 @@ function viewShop() {
   return out;
 }
 
+function askStart() {
+  const buttons = [];
+  if (!data.late) buttons.push({ id: "today", type: "default", text: t("when_today") });
+  buttons.push({ id: "tomorrow", type: "default", text: t("when_tomorrow") });
+  buttons.push({ id: "", type: "cancel" });
+  return new Promise(r => tg.showPopup ? tg.showPopup({ message: t("when"), buttons }, id => r(id || null))
+                                       : r(confirm(t("when")) ? "tomorrow" : null));
+}
+
 async function redeem(p) {
   if (busy) return;
   if (!(await confirmMsg(t("redeem_confirm", { price: fmt(p.price), title: p.title })))) return;
+  let start = "";
+  if (p.type === "commission") { start = await askStart(); if (!start) return; }
   busy = true;
   loading();
-  const r = await call("redeem", { reward_id: p.id });
+  const r = await call("redeem", { reward_id: p.id, start });
   busy = false;
   if (!r.ok) { haptic("error"); await alertMsg(errText(r.error)); }
-  else { haptic("success"); await alertMsg(t("redeem_ok", { rid: r.rid, price: fmt(r.price) })); }
+  else {
+    haptic("success");
+    await alertMsg(r.promo ? t("redeem_promo_ok", r.promo) : t("redeem_ok", { rid: r.rid, price: fmt(r.price) }));
+  }
   const fresh = await call("load");
   if (fresh.ok) apply(fresh); else render();
 }
