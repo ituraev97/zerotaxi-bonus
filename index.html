@@ -238,7 +238,8 @@ const tg = window.Telegram && window.Telegram.WebApp;
 let lang = "ru", data = null, tab = "home", busy = false;
 
 function t(key, kw) {
-  let s = (T[lang] && T[lang][key]) || T.ru[key] || key;
+  // Пустая строка — тоже значение (например, единица «заказы» без подписи), не подменяем её ключом.
+  let s = T[lang] && key in T[lang] ? T[lang][key] : key in T.ru ? T.ru[key] : key;
   if (kw) for (const k in kw) s = s.split("{" + k + "}").join(kw[k] == null ? "" : String(kw[k]));   // пусто, а не "undefined"
   return s;
 }
