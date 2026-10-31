@@ -56,6 +56,12 @@
   .prize .body { flex: 1; min-width: 0; }
   .prize .title { font-weight: 600; }
   .prize button { width: auto; padding: 9px 14px; white-space: nowrap; }
+  .phone { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 4px 12px; margin: 10px 0;
+    border: 1px solid color-mix(in srgb, var(--hint) 35%, transparent); background: var(--card); }
+  .phone b { font-size: 18px; }
+  .phone input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit;
+    font-size: 20px; padding: 10px 0; letter-spacing: .03em; min-width: 0; }
+  button.link { background: none; color: var(--link); font-weight: 500; padding: 12px 4px; white-space: pre-line; line-height: 1.5; }
   textarea { width: 100%; min-height: 110px; border-radius: 12px; padding: 10px 12px; font: inherit;
     border: 1px solid color-mix(in srgb, var(--hint) 35%, transparent); background: var(--card); color: var(--text);
     resize: vertical; margin-bottom: 10px; }
@@ -128,7 +134,12 @@ const T = {
     delete: "Удалить мои данные из программы",
     delete_confirm: "Удалить ваши данные (Telegram и телефон) из программы? Баллы останутся за вашим профилем, привязаться можно будет снова.",
     deleted: "Готово. Ваши данные удалены.",
-    reg_title: "Бонусы ZERO", reg_text: "Программа лояльности таксопарка: баллы за заказы, уровни и призы.\n\nЧтобы найти ваш профиль в парке, поделитесь номером телефона. Номер нужен только для этого и никому не передаётся.",
+    reg_title: "Бонусы ZERO", reg_text: "Программа лояльности таксопарка: баллы за заказы, уровни и призы.\n\nЧтобы найти ваш профиль в парке, нужен номер, на котором вы зарегистрированы в Yandex Pro. Если Telegram на этом же номере — нажмите кнопку ниже. Номер нужен только для этого и никому не передаётся.",
+    manual_link: "Telegram на другом номере?\nВвести номер вручную", manual_title: "Номер в Yandex Pro",
+    manual_hint: "Введите номер, на котором вы зарегистрированы в Yandex Pro. Он может отличаться от номера Telegram.",
+    manual_btn: "Привязать", back_tg: "« Отправить номер Telegram",
+    not_found_tg: "Номер вашего Telegram не найден среди водителей парка. Введите номер, на котором вы зарегистрированы в Yandex Pro.",
+    e_bad_phone: "Введите номер полностью: 9 цифр после +998.", e_too_many: "Слишком много попыток. Попробуйте завтра или напишите оператору.",
     reg_btn: "📱 Поделиться номером", reg_wait: "Проверяем номер…",
     reg_cancel: "Без номера не получится найти ваш профиль. Нажмите кнопку ещё раз.",
     old_tg: "Обновите Telegram до последней версии, чтобы привязаться.",
@@ -197,7 +208,12 @@ const T = {
     delete: "Ma'lumotlarimni dasturdan o'chirish",
     delete_confirm: "Ma'lumotlaringiz (Telegram va telefon) dasturdan o'chirilsinmi? Ballar profilingizda qoladi, keyin qayta ulanishingiz mumkin.",
     deleted: "Tayyor. Ma'lumotlaringiz o'chirildi.",
-    reg_title: "ZERO Bonuslar", reg_text: "Taksopark sodiqlik dasturi: buyurtmalar uchun ballar, darajalar va sovg'alar.\n\nParkdagi profilingizni topish uchun telefon raqamingizni yuboring. Raqam faqat shu maqsadda ishlatiladi va hech kimga berilmaydi.",
+    reg_title: "ZERO Bonuslar", reg_text: "Taksopark sodiqlik dasturi: buyurtmalar uchun ballar, darajalar va sovg'alar.\n\nParkdagi profilingizni topish uchun Yandex Pro'da ro'yxatdan o'tgan raqamingiz kerak. Telegram shu raqamda bo'lsa — pastdagi tugmani bosing. Raqam faqat shu maqsadda ishlatiladi va hech kimga berilmaydi.",
+    manual_link: "Telegram boshqa raqamdami?\nRaqamni qo'lda kiriting", manual_title: "Yandex Pro'dagi raqam",
+    manual_hint: "Yandex Pro'da ro'yxatdan o'tgan raqamingizni kiriting. U Telegram raqamidan farq qilishi mumkin.",
+    manual_btn: "Bog'lash", back_tg: "« Telegram raqamini yuborish",
+    not_found_tg: "Telegram raqamingiz park haydovchilari orasida topilmadi. Yandex Pro'da ro'yxatdan o'tgan raqamingizni kiriting.",
+    e_bad_phone: "Raqamni to'liq kiriting: +998 dan keyin 9 ta raqam.", e_too_many: "Urinishlar juda ko'p. Ertaga urinib ko'ring yoki operatorga yozing.",
     reg_btn: "📱 Raqamni yuborish", reg_wait: "Raqam tekshirilmoqda…",
     reg_cancel: "Raqamsiz profilingizni topib bo'lmaydi. Tugmani yana bosing.",
     old_tg: "Ulanish uchun Telegramni oxirgi versiyagacha yangilang.",
@@ -324,26 +340,44 @@ function apply(r) {
 
 // ---------------- Привязка ----------------
 
+let regMode = "tg";                       // "tg" — кнопка Telegram, "manual" — ввод номера Yandex Pro
+
 function renderRegister(msg) {
   tabsEl.hidden = true;
   const seg = h("div.seg",
     h("button" + (lang === "ru" ? "" : ".off"), { onclick: () => { lang = "ru"; renderRegister(msg); } }, "🇷🇺 Русский"),
     h("button" + (lang === "uz" ? "" : ".off"), { onclick: () => { lang = "uz"; renderRegister(msg); } }, "🇺🇿 O'zbekcha"));
-  const btn = h("button", { onclick: register }, t("reg_btn"));
-  screen(
-    h("div.hero", h("div.e", "🎁"), h("h1", t("reg_title"))),
-    h("div.card", seg),
+  const head = [h("div.hero", h("div.e", "🎁"), h("h1", t("reg_title"))), h("div.card", seg)];
+  if (regMode === "manual") {
+    const input = h("input", { type: "tel", inputmode: "numeric", autocomplete: "tel", placeholder: "90 123 45 67", maxlength: "16" });
+    const go = () => registerManual(input.value);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+    screen(...head,
+      h("div.card", h("b", t("manual_title")), h("div.muted", { style: "margin-top:4px" }, t("manual_hint")),
+        h("div.phone", h("b", "+998"), input)),
+      msg ? h("div.note.warn", msg) : null,
+      h("div", { style: "margin-top:14px" }, h("button", { onclick: go }, t("manual_btn"))),
+      h("button.link", { onclick: () => { regMode = "tg"; renderRegister(); } }, t("back_tg")));
+    setTimeout(() => input.focus(), 50);
+    return;
+  }
+  screen(...head,
     h("div.card", { style: "white-space:pre-line" }, t("reg_text")),
     msg ? h("div.note.warn", msg) : null,
-    h("div", { style: "margin-top:14px" }, btn));
+    h("div", { style: "margin-top:14px" }, h("button", { onclick: register }, t("reg_btn"))),
+    h("button.link", { onclick: () => { regMode = "manual"; renderRegister(); } }, t("manual_link")));
+}
+
+// Разрешение боту писать водителю: нужно, если он пришёл по ссылке и ни разу не нажимал Start
+// (иначе не придут закреплённая кнопка «Бонусы» и утренние сообщения). Отказ не мешает привязке.
+function withWriteAccess(next) {
+  if (tg.requestWriteAccess && tg.isVersionAtLeast("6.9")) tg.requestWriteAccess(() => next()); else next();
 }
 
 function register() {
   if (busy) return;
-  if (!tg.requestContact || !tg.isVersionAtLeast("6.9")) return renderRegister(t("old_tg"));
-  // Разрешение боту писать водителю: нужно, если он пришёл по ссылке и ни разу не нажимал Start
-  // (иначе не придут закреплённая кнопка «Бонусы» и утренние сообщения). Отказ не мешает привязке.
-  if (tg.requestWriteAccess) tg.requestWriteAccess(() => askContact()); else askContact();
+  if (!tg.requestContact || !tg.isVersionAtLeast("6.9")) { regMode = "manual"; return renderRegister(); }
+  withWriteAccess(askContact);
 }
 
 function askContact() {
@@ -353,11 +387,33 @@ function askContact() {
     screen(h("div.spin"), h("p.center.muted", t("reg_wait")));
     const r = await call("register", { contact: resp.response, lang });
     busy = false;
-    if (!r.ok) { haptic("error"); return renderRegister(errText(r.error)); }
-    haptic("success");
-    apply(r);
-    if (r.registered) alertMsg(t("welcome", { name: r.me.name }));
+    if (!r.ok && r.error === "not_found") {      // Telegram на другом номере — ввод номера Yandex Pro
+      haptic("warning"); regMode = "manual"; return renderRegister(t("not_found_tg"));
+    }
+    finishRegister(r);
   });
+}
+
+function registerManual(raw) {
+  if (busy) return;
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("998")) d = d.slice(3);
+  if (d.length !== 9) { haptic("error"); return renderRegister(t("e_bad_phone")); }
+  withWriteAccess(async () => {
+    busy = true;
+    screen(h("div.spin"), h("p.center.muted", t("reg_wait")));
+    const r = await call("register_manual", { phone: "998" + d, lang });
+    busy = false;
+    finishRegister(r);
+  });
+}
+
+function finishRegister(r) {
+  if (!r.ok) { haptic("error"); return renderRegister(errText(r.error)); }
+  haptic("success");
+  regMode = "tg";
+  apply(r);
+  if (r.registered) alertMsg(t("welcome", { name: r.me.name }));
 }
 
 // ---------------- Основной экран ----------------
